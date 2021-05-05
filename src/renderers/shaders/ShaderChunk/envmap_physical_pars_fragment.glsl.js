@@ -1,6 +1,10 @@
 export default /* glsl */`
 #if defined( USE_ENVMAP )
 
+#ifndef ENV_MAP_DIFFUSE_MULTIPLIER
+#define ENV_MAP_DIFFUSE_MULTIPLIER 1.0
+#endif
+
 	#ifdef ENVMAP_MODE_REFRACTION
 		uniform float refractionRatio;
 	#endif
@@ -18,12 +22,12 @@ export default /* glsl */`
 
 			#ifdef TEXTURE_LOD_EXT
 
-				vec4 envMapColor = textureCubeLodEXT( envMap, queryVec, float( maxMIPLevel ) );
+				vec4 envMapColor = ENV_MAP_DIFFUSE_MULTIPLIER * textureCubeLodEXT( envMap, queryVec, float( maxMIPLevel ) );
 
 			#else
 
 				// force the bias high to get the last LOD level as it is the most blurred.
-				vec4 envMapColor = textureCube( envMap, queryVec, float( maxMIPLevel ) );
+				vec4 envMapColor = ENV_MAP_DIFFUSE_MULTIPLIER * textureCube( envMap, queryVec, float( maxMIPLevel ) );
 
 			#endif
 
@@ -31,7 +35,7 @@ export default /* glsl */`
 
 		#elif defined( ENVMAP_TYPE_CUBE_UV )
 
-			vec4 envMapColor = textureCubeUV( envMap, worldNormal, 1.0 );
+			vec4 envMapColor = ENV_MAP_DIFFUSE_MULTIPLIER * textureCubeUV( envMap, worldNormal, 1.0 );
 
 		#else
 
