@@ -17,7 +17,7 @@ export function cloneUniforms( src ) {
 			if ( property && ( property.isColor ||
 				property.isMatrix3 || property.isMatrix4 ||
 				property.isVector2 || property.isVector3 || property.isVector4 ||
-				property.isTexture || property.isQuaternion ) ) {
+				/*property.isTexture ||*/ property.isQuaternion)) { // NOTE (vectary, danielis): this is causing textures to be copied in GPU memory
 
 				dst[ u ][ p ] = property.clone();
 
