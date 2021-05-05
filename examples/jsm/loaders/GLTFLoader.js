@@ -12,6 +12,7 @@ import {
 	FileLoader,
 	FrontSide,
 	Group,
+	HemisphereLight,
 	ImageBitmapLoader,
 	InterleavedBuffer,
 	InterleavedBufferAttribute,
@@ -48,6 +49,7 @@ import {
 	PropertyBinding,
 	QuaternionKeyframeTrack,
 	RGBFormat,
+	RectAreaLight,
 	RepeatWrapping,
 	Skeleton,
 	SkinnedMesh,
@@ -60,8 +62,12 @@ import {
 	Vector2,
 	Vector3,
 	VectorKeyframeTrack,
-	sRGBEncoding
+	sRGBEncoding,
+	LinearEncoding
 } from '../../../build/three.module.js';
+
+import { RectAreaLightUniformsLib } from "../lights/RectAreaLightUniformsLib";
+import { RectAreaLightHelper } from "../helpers/RectAreaLightHelper";
 
 class GLTFLoader extends Loader {
 
@@ -74,6 +80,8 @@ class GLTFLoader extends Loader {
 		this.meshoptDecoder = null;
 
 		this.pluginCallbacks = [];
+
+		this.textureCache = new Map();
 
 		this.register( function ( parser ) {
 
@@ -292,7 +300,8 @@ class GLTFLoader extends Loader {
 			requestHeader: this.requestHeader,
 			manager: this.manager,
 			ktx2Loader: this.ktx2Loader,
-			meshoptDecoder: this.meshoptDecoder
+			meshoptDecoder: this.meshoptDecoder,
+			textureCache: this.textureCache
 
 		} );
 
@@ -338,6 +347,10 @@ class GLTFLoader extends Loader {
 
 					case EXTENSIONS.KHR_MESH_QUANTIZATION:
 						extensions[ extensionName ] = new GLTFMeshQuantizationExtension();
+						break;
+
+					case EXTENSIONS.VCTR_LIGHTS:
+						extensions[extensionName] = new GLTFLightsExtensionVctr(json);
 						break;
 
 					default:
@@ -414,8 +427,72 @@ const EXTENSIONS = {
 	KHR_TEXTURE_TRANSFORM: 'KHR_texture_transform',
 	KHR_MESH_QUANTIZATION: 'KHR_mesh_quantization',
 	EXT_TEXTURE_WEBP: 'EXT_texture_webp',
-	EXT_MESHOPT_COMPRESSION: 'EXT_meshopt_compression'
+	EXT_MESHOPT_COMPRESSION: 'EXT_meshopt_compression',
+	VCTR_LIGHTS: 'VCTR_lights'
 };
+
+/**
+	 * Vectary Lights Extension
+	 *
+	 * Specification: PENDING
+	 */
+	function GLTFLightsExtensionVctr(json) {
+
+		this.name = EXTENSIONS.VCTR_LIGHTS;
+
+		const extension = (json.extensions && json.extensions[EXTENSIONS.VCTR_LIGHTS]) || {};
+		this.lightDefs = extension.lights || [];
+
+	}
+
+	GLTFLightsExtensionVctr.prototype.loadLight = function (lightIndex) {
+
+		const lightDef = this.lightDefs[lightIndex];
+		let lightNode;
+
+		const color = new Color(0xffffff);
+		if (lightDef.color !== undefined) color.fromArray(lightDef.color);
+
+		const range = lightDef.range !== undefined ? lightDef.range : 0;
+
+		switch (lightDef.type) {
+
+			case 'rectangle':
+				RectAreaLightUniformsLib.init();
+				lightNode = new RectAreaLight(color, lightDef.intensity, lightDef.rectangle.size.x / 1000, lightDef.rectangle.size.y / 1000);
+				const rectLightHelper = new RectAreaLightHelper(lightNode);
+				lightNode.add(rectLightHelper);
+				break;
+
+			case 'tube':
+				lightNode = new PointLight(color);
+				lightNode.distance = range;
+				break;
+
+			case 'hemisphere':
+				lightNode = new HemisphereLight(lightDef.hemisphere.colorUp, lightDef.hemisphere.colorDown, lightDef.intensity);
+				// Hemisphere light is baked into lightmap and does NOT reflect of reflective objects
+				lightNode.visible = false;
+				break;
+
+			default:
+				throw new Error('THREE.GLTFLoader: Unexpected light type, "' + lightDef.type + '".');
+
+		}
+
+		// Some lights (e.g. spot) default to a position other than the origin. Reset the position
+		// here, because node-level parsing will only override position if explicitly specified.
+		lightNode.position.set(0, 0, 0);
+
+		lightNode.decay = 2;
+
+		if (lightDef.intensity !== undefined) lightNode.intensity = lightDef.intensity;
+
+		lightNode.name = lightDef.name || ('light_' + lightIndex);
+
+		return Promise.resolve(lightNode);
+
+	};
 
 /**
 	 * Punctual Lights Extension
@@ -2267,6 +2344,14 @@ class GLTFParser {
 					dependency = this.loadCamera( index );
 					break;
 
+				case 'light':
+					dependency = this.extensions[ EXTENSIONS.KHR_LIGHTS_PUNCTUAL ].loadLight(index);
+					break;
+
+				case 'vctr_light':
+					dependency = this.extensions[ EXTENSIONS.VCTR_LIGHTS ].loadLight(index);
+					break;
+
 				default:
 					throw new Error( 'Unknown type: ' + type );
 
@@ -2635,32 +2720,42 @@ class GLTFParser {
 	assignTexture( materialParams, mapName, mapDef ) {
 
 		const parser = this;
+		const textureCache = this.options.textureCache;
 
 		return this.getDependency( 'texture', mapDef.index ).then( function ( texture ) {
 
-			// Materials sample aoMap from UV set 1 and other maps from UV set 0 - this can't be configured
-			// However, we will copy UV set 0 to UV set 1 on demand for aoMap
-			if ( mapDef.texCoord !== undefined && mapDef.texCoord != 0 && ! ( mapName === 'aoMap' && mapDef.texCoord == 1 ) ) {
+			if ( textureCache.get( mapDef.index ) ) {
 
-				console.warn( 'THREE.GLTFLoader: Custom UV set ' + mapDef.texCoord + ' for texture ' + mapName + ' not yet supported.' );
+				materialParams[mapName] = textureCache.get(mapDef.index);
 
-			}
+			} else {
 
-			if ( parser.extensions[ EXTENSIONS.KHR_TEXTURE_TRANSFORM ] ) {
+				// Materials sample aoMap from UV set 1 and other maps from UV set 0 - this can't be configured
+				// However, we will copy UV set 0 to UV set 1 on demand for aoMap
+				if ( mapDef.texCoord !== undefined && mapDef.texCoord != 0 && ! ( mapName === 'aoMap' && mapDef.texCoord == 1 ) ) {
 
-				const transform = mapDef.extensions !== undefined ? mapDef.extensions[ EXTENSIONS.KHR_TEXTURE_TRANSFORM ] : undefined;
-
-				if ( transform ) {
-
-					const gltfReference = parser.associations.get( texture );
-					texture = parser.extensions[ EXTENSIONS.KHR_TEXTURE_TRANSFORM ].extendTexture( texture, transform );
-					parser.associations.set( texture, gltfReference );
+					console.warn( 'THREE.GLTFLoader: Custom UV set ' + mapDef.texCoord + ' for texture ' + mapName + ' not yet supported.' );
 
 				}
 
-			}
+				if ( parser.extensions[ EXTENSIONS.KHR_TEXTURE_TRANSFORM ] ) {
 
-			materialParams[ mapName ] = texture;
+					const transform = mapDef.extensions !== undefined ? mapDef.extensions[ EXTENSIONS.KHR_TEXTURE_TRANSFORM ] : undefined;
+
+					if ( transform ) {
+
+						const gltfReference = parser.associations.get( texture );
+						texture = parser.extensions[ EXTENSIONS.KHR_TEXTURE_TRANSFORM ].extendTexture( texture, transform );
+						parser.associations.set( texture, gltfReference );
+
+					}
+
+				}
+
+				textureCache.set( mapDef.index, texture );
+				materialParams[ mapName ] = texture;
+
+			}
 
 		} );
 
@@ -2773,7 +2868,7 @@ class GLTFParser {
 
 		// workarounds for mesh and geometry
 
-		if ( material.aoMap && geometry.attributes.uv2 === undefined && geometry.attributes.uv !== undefined ) {
+		if ( (material.aoMap || material.lightMap) && geometry.attributes.uv2 === undefined && geometry.attributes.uv !== undefined ) {
 
 			geometry.setAttribute( 'uv2', geometry.attributes.uv );
 
@@ -2881,7 +2976,7 @@ class GLTFParser {
 			materialParams.transparent = true;
 
 			// See: https://github.com/mrdoob/three.js/issues/17706
-			materialParams.depthWrite = false;
+			materialParams.depthWrite = true;
 
 		} else {
 
@@ -2910,6 +3005,10 @@ class GLTFParser {
 
 		}
 
+		let aoMapTexcoord = undefined;
+		let lightMapEnvironmentBaked = undefined;
+		let lightMapSRGB = undefined;
+
 		if ( materialDef.occlusionTexture !== undefined && materialType !== MeshBasicMaterial ) {
 
 			pending.push( parser.assignTexture( materialParams, 'aoMap', materialDef.occlusionTexture ) );
@@ -2920,6 +3019,35 @@ class GLTFParser {
 
 			}
 
+			if ( materialDef.occlusionTexture.texCoord !== undefined ) {
+
+				aoMapTexcoord = materialDef.occlusionTexture.texCoord;
+
+			}
+
+		}
+
+		if ( materialDef.lightmapTexture !== undefined && materialType !== MeshBasicMaterial ) {
+
+			pending.push(parser.assignTexture(materialParams, 'lightMap', materialDef.lightmapTexture));
+
+			if (materialDef.lightmapTexture.strength !== undefined) {
+
+				materialParams.lightMapIntensity = materialDef.lightmapTexture.strength;
+
+			}
+
+			if (materialDef.lightmapTexture.environmentBaked !== undefined) {
+
+				lightMapEnvironmentBaked = materialDef.lightmapTexture.environmentBaked;
+
+			}
+
+			if (materialDef.lightmapTexture.srgb !== undefined) {
+
+				lightMapSRGB = materialDef.lightmapTexture.srgb;
+
+			}
 		}
 
 		if ( materialDef.emissiveFactor !== undefined && materialType !== MeshBasicMaterial ) {
@@ -2959,6 +3087,32 @@ class GLTFParser {
 			parser.associations.set( material, { type: 'materials', index: materialIndex } );
 
 			if ( materialDef.extensions ) addUnknownExtensionsToUserData( extensions, material, materialDef );
+
+			if ( material.aoMap && aoMapTexcoord !== undefined ) {
+
+				material.aoMap.texCoord = aoMapTexcoord;
+
+			}
+
+			if ( material.lightMap && lightMapEnvironmentBaked !== undefined ) {
+
+				material.lightMap.environmentBaked = lightMapEnvironmentBaked;
+
+			}
+
+			if ( material.lightMap ) {
+
+				if ( lightMapSRGB !== undefined ) {
+
+					material.lightMap.encoding = sRGBEncoding;
+
+				} else {
+
+					material.lightMap.encoding = LinearEncoding;
+
+				}
+
+			}
 
 			return material;
 
@@ -3497,6 +3651,22 @@ class GLTFParser {
 					return parser._getNodeRef( parser.cameraCache, nodeDef.camera, camera );
 
 				} ) );
+
+			}
+
+			if ( nodeDef.extensions
+				&& nodeDef.extensions[ EXTENSIONS.KHR_LIGHTS_PUNCTUAL ]
+				&& nodeDef.extensions[ EXTENSIONS.KHR_LIGHTS_PUNCTUAL ].light !== undefined) {
+
+				pending.push(parser.getDependency('light', nodeDef.extensions[ EXTENSIONS.KHR_LIGHTS_PUNCTUAL ].light));
+
+			}
+
+			if ( nodeDef.extensions
+				&& nodeDef.extensions[ EXTENSIONS.VCTR_LIGHTS ]
+				&& nodeDef.extensions[ EXTENSIONS.VCTR_LIGHTS ].light !== undefined) {
+
+				pending.push(parser.getDependency('vctr_light', nodeDef.extensions[ EXTENSIONS.VCTR_LIGHTS ].light));
 
 			}
 
