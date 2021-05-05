@@ -27,7 +27,7 @@ class SVGLoader extends Loader {
 
 	}
 
-	load( url, onLoad, onProgress, onError ) {
+	load( url, onLoad, onProgress, onError, onWarning ) { // vctr change
 
 		const scope = this;
 
@@ -39,7 +39,7 @@ class SVGLoader extends Loader {
 
 			try {
 
-				onLoad( scope.parse( text ) );
+				onLoad( scope.parse( text, onError, onWarning ) ); // vctr change
 
 			} catch ( e ) {
 
@@ -61,13 +61,46 @@ class SVGLoader extends Loader {
 
 	}
 
-	parse( text ) {
+	parse( text, onError, onWarning ) { // vctr change
 
 		const scope = this;
 
-		function parseNode( node, style ) {
+		function parseNode( node, style, styleMap ) { // vctr change
 
 			if ( node.nodeType !== 1 ) return;
+
+			/**
+			 * vctr change - part of code - start:
+			 * this part of code is here because of taking into account the fill-rule property => it can be applied to any element
+			 * but it has effect only on the following eight elements: <altGlyph>, <path>, <polygon>, <polyline>, <text>, <textPath>, <tref>, and <tspan>
+
+			 * for these elements we have to check self-intersections and orientations of paths and recreate paths if needed
+			 * to have unified orientations without self-intersections so that three js can create correctly filled shapes with holes
+			*/
+			switch (node.nodeName) {
+
+				case 'path':
+				case 'polygon':
+				case 'polyline':
+					const clonedStyle = parseStyleForNode( node, Object.assign({}, style), styleMap );
+					const newNodes = recreatePath( node, clonedStyle ); // path, polygon and polyline are changed to a new path nodes here
+					if ( newNodes.length > 0 ) {
+
+						if ( newNodes.length > 1 ) {
+
+							for ( let i = 0; i < newNodes.length; i++ ) {
+								parseNode(newNodes[i], style, styleMap);
+							}
+							return;
+
+						}
+
+						node = newNodes[0];
+
+					}
+					break;
+			}
+			// vctr change - part of code - end
 
 			const transform = getNodeTransform( node );
 
@@ -78,50 +111,58 @@ class SVGLoader extends Loader {
 			switch ( node.nodeName ) {
 
 				case 'svg':
+					style = parseStyleForNode( node, style, styleMap ); // vctr change
 					break;
 
 				case 'style':
-					parseCSSStylesheet( node );
+					parseStyleNode( node, styleMap ); // vctr change
 					break;
 
 				case 'g':
-					style = parseStyle( node, style );
+					style = parseStyleForNode( node, style, styleMap ); // vctr change
 					break;
 
 				case 'path':
-					style = parseStyle( node, style );
-					if ( node.hasAttribute( 'd' ) ) path = parsePathNode( node );
+					style = parseStyleForNode( node, style, styleMap ); // vctr change
+ 					if ( node.hasAttribute( 'd' ) && node.getAttribute( 'd' ).match( /[a-df-z][^a-df-z]*/ig ) ) path = parsePathNode( node ); // vctr change
 					break;
 
 				case 'rect':
-					style = parseStyle( node, style );
+					style = parseStyleForNode( node, style, styleMap ); // vctr change
 					path = parseRectNode( node );
 					break;
 
 				case 'polygon':
-					style = parseStyle( node, style );
+					style = parseStyleForNode( node, style, styleMap ); // vctr change
 					path = parsePolygonNode( node );
 					break;
 
 				case 'polyline':
-					style = parseStyle( node, style );
+					style = parseStyleForNode( node, style, styleMap ); // vctr change
 					path = parsePolylineNode( node );
 					break;
 
 				case 'circle':
-					style = parseStyle( node, style );
+					style = parseStyleForNode( node, style, styleMap ); // vctr change
 					path = parseCircleNode( node );
 					break;
 
 				case 'ellipse':
-					style = parseStyle( node, style );
+					style = parseStyleForNode( node, style, styleMap ); // vctr change
 					path = parseEllipseNode( node );
 					break;
 
 				case 'line':
-					style = parseStyle( node, style );
+					style = parseStyleForNode( node, style, styleMap ); // vctr change
 					path = parseLineNode( node );
 					break;
+
+				// vctr change - unsupported nodes - start
+				case 'text':
+				case 'image':
+					onWarning("unsupportedNode");
+					break;
+				// vctr change - unsupported nodes - end
 
 				case 'defs':
 					traverseChildNodes = false;
@@ -133,7 +174,7 @@ class SVGLoader extends Loader {
 					const usedNode = node.viewportElement.getElementById( usedNodeId );
 					if ( usedNode ) {
 
-						parseNode( usedNode, style );
+						parseNode( usedNode, style, styleMap ); // vctr change
 
 					} else {
 
@@ -148,48 +189,54 @@ class SVGLoader extends Loader {
 
 			}
 
-			if ( path ) {
+			try { // vctr change
 
-				if ( style.fill !== undefined && style.fill !== 'none' ) {
+				if ( path ) {
 
-					path.color.setStyle( style.fill );
+					if ( style.fill !== undefined && style.fill !== 'none' ) {
 
-				}
+						path.color.setStyle( style.fill );
 
-				transformPath( path, currentTransform );
+					}
 
-				paths.push( path );
+					transformPath( path, currentTransform );
 
-				path.userData = { node: node, style: style };
+					paths.push( path );
 
-			}
-
-			if ( traverseChildNodes ) {
-
-				const nodes = node.childNodes;
-
-				for ( let i = 0; i < nodes.length; i ++ ) {
-
-					parseNode( nodes[ i ], style );
+					path.userData = { node: node, style: style, transform: currentTransform.clone() }; // vctr change
 
 				}
 
-			}
+				if ( traverseChildNodes ) {
 
-			if ( transform ) {
+					const nodes = node.childNodes;
 
-				transformStack.pop();
+					for ( let i = 0; i < nodes.length; i ++ ) {
 
-				if ( transformStack.length > 0 ) {
+						parseNode( nodes[ i ], style, styleMap ); // vctr change
 
-					currentTransform.copy( transformStack[ transformStack.length - 1 ] );
-
-				} else {
-
-					currentTransform.identity();
+					}
 
 				}
 
+				if ( transform ) {
+
+					transformStack.pop();
+
+					if ( transformStack.length > 0 ) {
+
+						currentTransform.copy( transformStack[ transformStack.length - 1 ] );
+
+					} else {
+
+						currentTransform.identity();
+
+					}
+
+				}
+
+			} catch (e) { // vctr change
+				onError(e); // vctr change
 			}
 
 		}
@@ -642,34 +689,6 @@ class SVGLoader extends Loader {
 
 		}
 
-		function parseCSSStylesheet( node ) {
-
-			if ( ! node.sheet || ! node.sheet.cssRules || ! node.sheet.cssRules.length ) return;
-
-			for ( let i = 0; i < node.sheet.cssRules.length; i ++ ) {
-
-				const stylesheet = node.sheet.cssRules[ i ];
-
-				if ( stylesheet.type !== 1 ) continue;
-
-				const selectorList = stylesheet.selectorText
-					.split( /,/gm )
-					.filter( Boolean )
-					.map( i => i.trim() );
-
-				for ( let j = 0; j < selectorList.length; j ++ ) {
-
-					stylesheets[ selectorList[ j ] ] = Object.assign(
-						stylesheets[ selectorList[ j ] ] || {},
-						stylesheet.style
-					);
-
-				}
-
-			}
-
-		}
-
 		/**
 		 * https://www.w3.org/TR/SVG/implnote.html#ArcImplementationNotes
 		 * https://mortoray.com/2017/02/16/rendering-an-svg-elliptical-arc-as-bezier-curves/ Appendix: Endpoint to center arc conversion
@@ -762,28 +781,24 @@ class SVGLoader extends Loader {
 			const ry = parseFloatWithUnits( node.getAttribute( 'ry' ) || 0 );
 			const w = parseFloatWithUnits( node.getAttribute( 'width' ) );
 			const h = parseFloatWithUnits( node.getAttribute( 'height' ) );
+			const rx = Math.min(parseFloat(node.getAttribute('rx') || node.getAttribute('ry') || 0), w / 2); // vctr change
+			const ry = Math.min(parseFloat(node.getAttribute('ry') || node.getAttribute('rx') || 0), h / 2); // vctr change
+
+			// vctr change - part of code - start:
+			const subpath = new Path();
+			subpath.moveTo(x + rx, y);
+			if (w !== 2 * rx) subpath.lineTo(x + w - rx, y);
+			if (rx !== 0 || ry !== 0) subpath.absellipse(x + w - rx, y + ry, rx, ry, 3 * Math.PI / 2, 0);
+			if (h !== 2 * ry) subpath.lineTo(x + w, y + h - ry);
+			if (rx !== 0 || ry !== 0) subpath.absellipse(x + w - rx, y + h - ry, rx, ry, 0, Math.PI / 2);
+			if (w !== 2 * rx) subpath.lineTo(x + rx, y + h);
+			if (rx !== 0 || ry !== 0) subpath.absellipse(x + rx, y + h - ry, rx, ry, Math.PI / 2, Math.PI);
+			if (h !== 2 * ry) subpath.lineTo(x, y + ry);
+			if (rx !== 0 || ry !== 0) subpath.absellipse(x + rx, y + ry, rx, ry, Math.PI, 3 * Math.PI / 2);
 
 			const path = new ShapePath();
-			path.moveTo( x + 2 * rx, y );
-			path.lineTo( x + w - 2 * rx, y );
-			if ( rx !== 0 || ry !== 0 ) path.bezierCurveTo( x + w, y, x + w, y, x + w, y + 2 * ry );
-			path.lineTo( x + w, y + h - 2 * ry );
-			if ( rx !== 0 || ry !== 0 ) path.bezierCurveTo( x + w, y + h, x + w, y + h, x + w - 2 * rx, y + h );
-			path.lineTo( x + 2 * rx, y + h );
-
-			if ( rx !== 0 || ry !== 0 ) {
-
-				path.bezierCurveTo( x, y + h, x, y + h, x, y + h - 2 * ry );
-
-			}
-
-			path.lineTo( x, y + 2 * ry );
-
-			if ( rx !== 0 || ry !== 0 ) {
-
-				path.bezierCurveTo( x, y, x, y, x + 2 * rx, y );
-
-			}
+			path.subPaths.push(subpath);
+			// vctr change - part of code - end
 
 			return path;
 
@@ -914,29 +929,6 @@ class SVGLoader extends Loader {
 
 			style = Object.assign( {}, style ); // clone style
 
-			let stylesheetStyles = {};
-
-			if ( node.hasAttribute( 'class' ) ) {
-
-				const classSelectors = node.getAttribute( 'class' )
-					.split( /\s/ )
-					.filter( Boolean )
-					.map( i => i.trim() );
-
-				for ( let i = 0; i < classSelectors.length; i ++ ) {
-
-					stylesheetStyles = Object.assign( stylesheetStyles, stylesheets[ '.' + classSelectors[ i ] ] );
-
-				}
-
-			}
-
-			if ( node.hasAttribute( 'id' ) ) {
-
-				stylesheetStyles = Object.assign( stylesheetStyles, stylesheets[ '#' + node.getAttribute( 'id' ) ] );
-
-			}
-
 			function addStyle( svgName, jsName, adjustFunction ) {
 
 				if ( adjustFunction === undefined ) adjustFunction = function copy( v ) {
@@ -947,10 +939,12 @@ class SVGLoader extends Loader {
 
 				};
 
-				if ( node.hasAttribute( svgName ) ) style[ jsName ] = adjustFunction( node.getAttribute( svgName ) );
-				if ( stylesheetStyles[ svgName ] ) style[ jsName ] = adjustFunction( stylesheetStyles[ svgName ] );
-				if ( node.style && node.style[ svgName ] !== '' ) style[ jsName ] = adjustFunction( node.style[ svgName ] );
-
+				// old vctr change - part of code - start (TODO: investigate new threeJs stylesheetStyles)
+				const attribute = getStyleAttribute( node, svgName );
+				if ( attribute ) {
+					style[ jsName ] = adjustFunction( attribute );
+				}
+				// old vctr change - part of code - end
 			}
 
 			function clamp( v ) {
@@ -965,8 +959,10 @@ class SVGLoader extends Loader {
 
 			}
 
+			addStyle( 'opacity', 'opacity', clamp); // vctr change
 			addStyle( 'fill', 'fill' );
 			addStyle( 'fill-opacity', 'fillOpacity', clamp );
+			addStyle( 'fill-rule', 'fillRule' ); // vctr change
 			addStyle( 'opacity', 'opacity', clamp );
 			addStyle( 'stroke', 'stroke' );
 			addStyle( 'stroke-opacity', 'strokeOpacity', clamp );
@@ -1564,19 +1560,46 @@ class SVGLoader extends Loader {
 
 					} else if ( curve.isEllipseCurve ) {
 
-						if ( isRotated ) {
-
-							console.warn( 'SVGLoader: Elliptic arc or ellipse rotation or skewing is not implemented.' );
-
-						}
-
-						tempV2.set( curve.aX, curve.aY );
-						transfVec2( tempV2 );
+						/** vctr change - part of code - start
+						 * whole transformation for ellipseCurve is our implementation
+						*/
+						tempV2.set(curve.aX, curve.aY);
+						transfVec2(tempV2);
 						curve.aX = tempV2.x;
 						curve.aY = tempV2.y;
 
-						curve.xRadius *= getTransformScaleX( m );
-						curve.yRadius *= getTransformScaleY( m );
+						const eX = new Vector3(curve.xRadius, 0, 0).applyMatrix3(m);
+						const eY = new Vector3(0, curve.yRadius, 0).applyMatrix3(m);
+						if (Math.abs(eX.dot(eY)) < 1e-3) {
+							let sx = Math.sqrt(m.elements[0] * m.elements[0] + m.elements[1] * m.elements[1]);
+							let sy = Math.sqrt(m.elements[3] * m.elements[3] + m.elements[4] * m.elements[4]);
+							if (Math.cos(angle) !== 0) {
+								sx *= Math.sign(m.elements[0]);
+								sy *= Math.sign(m.elements[4]);
+							}
+
+							var angle = Math.atan(m.elements[1] / m.elements[0]);
+							if (sx < 0 && sy < 0) {
+								angle += Math.PI;
+							} else if (sx < 0) {
+								curve.aStartAngle = Math.PI - curve.aStartAngle;
+								curve.aEndAngle = Math.PI - curve.aEndAngle;
+								curve.aClockwise = true;
+							} else if (sy < 0) {
+								curve.aStartAngle = 2 * Math.PI - curve.aStartAngle;
+								curve.aEndAngle = 2 * Math.PI - curve.aEndAngle;
+								curve.aClockwise = true;
+							}
+
+							curve.xRadius = Math.abs(sx * curve.xRadius);
+							curve.yRadius = Math.abs(sy * curve.yRadius);
+							curve.aRotation = angle;
+
+						} else {
+							onWarning("skewingEllipse");
+							console.warn("SVGLoader: Elliptic arc or ellipse transformation with skewing is not implemented.");
+						}
+						/* vctr change - part of code - end */
 
 					}
 
@@ -1606,10 +1629,132 @@ class SVGLoader extends Loader {
 
 		}
 
+		/* vctr change - part of code - start */
+		function parseStyleNode( styleNode, styleMap ) {
+			var extractedStyles = styleNode.textContent
+				.replace(/\s|\n/g, "")
+				.replace(/\/\*.*?\*\//g, "")
+				.split("}")
+				.filter(s => s.length)
+				.map(s => s+"}");
+
+			for (let cssText of extractedStyles) {
+				var styleObject = parseCSSText(cssText);
+				var styleClass = styleObject.ruleName.replace(/^\./, "");
+				styleMap.set(styleClass, styleObject);
+			}
+		}
+
+		function parseStyleForNode( node, style, styleMap ) {
+			var parseStyleFromMap = styleKey => {
+				var styleValue = styleMap.get(styleKey);
+				if ( styleValue ) {
+					style = parseStyle( styleValue, style );
+				}
+			};
+
+			parseStyleFromMap(node.nodeName);
+			for (let i = 0; i < node.classList.length; i++) {
+				parseStyleFromMap(node.classList[i]);
+			}
+
+			return parseStyle( node, style );
+		}
+
+		function recreatePath(node, style) {
+			if ( style.fill === "none" ) {
+				return [];
+			}
+
+			const createPathsAndReplaceNode = ( node ) => {
+				const paths = [];
+
+				const nodeTransform = getStyleAttribute( node, "transform" );
+				node.setAttribute( "transform", "" );
+
+				paper.setup(paper.createCanvas());
+				paper.project.clear();
+
+				const fillNode = document.createElementNS( "http://www.w3.org/2000/svg", "path" );
+				fillNode.setAttribute( "fill-rule", "nonzero" );
+				fillNode.setAttribute( "stroke",  "none" );
+				if ( nodeTransform ) fillNode.setAttribute( "transform", nodeTransform );
+
+				fillNode.setAttribute( "opacity", style.opacity );
+				fillNode.setAttribute( "fill", style.fill );
+				fillNode.setAttribute( "fill-opacity", style.fillOpacity );
+				fillNode.setAttribute( "d", paper.project.importSVG(node).unite().pathData );
+
+				node.parentNode.replaceChild( fillNode, node );
+				paths.push( fillNode );
+
+				if ( style.stroke !== "none" ) {
+					const strokeNode = node.cloneNode();
+					strokeNode.setAttribute( "fill-rule", "nonzero" );
+					strokeNode.setAttribute( "fill", "none" );
+					if ( nodeTransform ) strokeNode.setAttribute( "transform", nodeTransform );
+
+					const childNodes = Array.from( fillNode.parentNode.children );
+					const nextNode = childNodes[ childNodes.findIndex( ch => ch === fillNode ) + 1 ];
+					fillNode.parentNode.insertBefore( strokeNode, nextNode );
+
+					paths.push( strokeNode );
+				}
+
+				return paths;
+			};
+
+
+			if ( style.fillRule === "evenodd" ) {
+
+				node.setAttribute( "fill-rule", "evenodd" );
+				return createPathsAndReplaceNode( node );
+
+			}
+
+			if ( style.fillRule === "nonzero" ) {
+
+				node.setAttribute( "fill-rule", "nonzero" );
+
+				paper.setup(paper.createCanvas());
+				paper.project.clear();
+				var testingNode = node.cloneNode();
+				testingNode.setAttribute( "fill-rule", "evenodd" );
+
+				if ( paper.project.importSVG(testingNode).unite().intersections.length > 0 ) {
+					return createPathsAndReplaceNode( node );
+				}
+
+			}
+
+			return [];
+		}
+
+		function getStyleAttribute( node, svgName ) {
+			if ( node.hasAttribute && node.hasAttribute( svgName ) ) {
+				return node.getAttribute( svgName );
+			}
+
+			var hasStyle = ( style, svgName ) => {
+				return style && style[ svgName ] !== undefined && style[ svgName ] !== '';
+			};
+			if ( hasStyle( node.style, svgName ) ) {
+				return node.style[ svgName ];
+			}
+
+			if ( node.hasAttribute && node.hasAttribute( "style" ) ) {
+				var parsedCss = parseCSSText( node.getAttribute( "style" ) );
+				if ( hasStyle( parsedCss.style, svgName ) ) return parsedCss.style[ svgName ];
+			}
+
+			return null;
+		}
+		/* vctr change - part of code - end */
+
 		//
 
 		const paths = [];
-		const stylesheets = {};
+		const styleMap = new Map(); // old vctr change instead of new threeJs stylesheets (TODO: investigate how the new threeJs approach works)
 
 		const transformStack = [];
 
@@ -1625,14 +1770,17 @@ class SVGLoader extends Loader {
 		const xml = new DOMParser().parseFromString( text, 'image/svg+xml' ); // application/xml
 
 		parseNode( xml.documentElement, {
+			opacity: 1, // vctr change
 			fill: '#000',
 			fillOpacity: 1,
+			fillRule: "nonzero", // vctr change
+            stroke: "none", // vctr change
 			strokeOpacity: 1,
 			strokeWidth: 1,
 			strokeLineJoin: 'miter',
 			strokeLineCap: 'butt',
 			strokeMiterLimit: 4
-		} );
+		}, styleMap ); // vctr change
 
 		const data = { paths: paths, xml: xml.documentElement };
 
@@ -2170,7 +2318,7 @@ class SVGLoader extends Loader {
 
 		if ( numPoints < 2 ) return 0;
 
-		const isClosed = points[ 0 ].equals( points[ numPoints - 1 ] );
+		const isClosed = points[ 0 ].distanceTo( points[ numPoints - 1 ] ) < minDistance; // vctr change
 
 		let currentPoint;
 		let previousPoint = points[ 0 ];
@@ -2885,6 +3033,17 @@ class SVGLoader extends Loader {
 	}
 
 
+}
+
+// vctr change
+// https://stackoverflow.com/questions/8987550/convert-css-text-to-javascript-object
+function parseCSSText(cssText) {
+	var cssTxt = cssText.replace(/\/\*(.|\s)*?\*\//g, " ").replace(/\s+/g, " ");
+	var style = {}, [, ruleName, rule] = cssTxt.match(/ ?(.*?) ?{([^}]*)}/) || [, , cssTxt];
+	// var cssToJs = s => s.replace(/\W+\w/g, match => match.slice(-1).toUpperCase());
+	var properties = rule.split(";").map(o => o.split(":").map(x => x && x.trim()));
+	for (var [property, value] of properties) style[/*cssToJs(*/property/*)*/] = value;
+	return { cssText, ruleName, style };
 }
 
 export { SVGLoader };
