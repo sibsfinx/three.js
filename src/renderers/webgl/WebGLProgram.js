@@ -682,7 +682,8 @@ function WebGLProgram( renderer, cacheKey, parameters, bindingStates ) {
 		prefixVertex = [
 			'#define attribute in',
 			'#define varying out',
-			'#define texture2D texture'
+			'#define texture2D texture',
+			'#define texture2DLod textureLod'
 		].join( '\n' ) + '\n' + prefixVertex;
 
 		prefixFragment = [
@@ -698,7 +699,8 @@ function WebGLProgram( renderer, cacheKey, parameters, bindingStates ) {
 			'#define textureCubeLodEXT textureLod',
 			'#define texture2DGradEXT textureGrad',
 			'#define texture2DProjGradEXT textureProjGrad',
-			'#define textureCubeGradEXT textureGrad'
+			'#define textureCubeGradEXT textureGrad',
+			'#define texture2DLod textureLod'
 		].join( '\n' ) + '\n' + prefixFragment;
 
 	}
