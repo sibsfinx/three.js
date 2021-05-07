@@ -777,12 +777,12 @@ class SVGLoader extends Loader {
 
 			const x = parseFloatWithUnits( node.getAttribute( 'x' ) || 0 );
 			const y = parseFloatWithUnits( node.getAttribute( 'y' ) || 0 );
-			const rx = parseFloatWithUnits( node.getAttribute( 'rx' ) || 0 );
-			const ry = parseFloatWithUnits( node.getAttribute( 'ry' ) || 0 );
+			let rx = parseFloatWithUnits( node.getAttribute( 'rx' ) || 0 );
+			let ry = parseFloatWithUnits( node.getAttribute( 'ry' ) || 0 );
 			const w = parseFloatWithUnits( node.getAttribute( 'width' ) );
 			const h = parseFloatWithUnits( node.getAttribute( 'height' ) );
-			const rx = Math.min(parseFloat(node.getAttribute('rx') || node.getAttribute('ry') || 0), w / 2); // vctr change
-			const ry = Math.min(parseFloat(node.getAttribute('ry') || node.getAttribute('rx') || 0), h / 2); // vctr change
+			rx = Math.min(parseFloat(node.getAttribute('rx') || node.getAttribute('ry') || 0), w / 2); // vctr change
+			ry = Math.min(parseFloat(node.getAttribute('ry') || node.getAttribute('rx') || 0), h / 2); // vctr change
 
 			// vctr change - part of code - start:
 			const subpath = new Path();
