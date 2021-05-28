@@ -349,6 +349,7 @@ class OrbitControls extends EventDispatcher {
 
 			scope.domElement.removeEventListener( 'contextmenu', onContextMenu );
 
+			scope.domElement.removeEventListener( 'mousedown', onMouseDown );
 			scope.domElement.removeEventListener( 'pointerdown', onPointerDown );
 			scope.domElement.removeEventListener( 'wheel', onMouseWheel );
 
@@ -356,6 +357,8 @@ class OrbitControls extends EventDispatcher {
 			scope.domElement.removeEventListener( 'touchend', onTouchEnd );
 			scope.domElement.removeEventListener( 'touchmove', onTouchMove );
 
+			scope.domElement.ownerDocument.removeEventListener( 'mousemove', onMouseMove );
+			scope.domElement.ownerDocument.removeEventListener( 'mouseup', onMouseUp );
 			scope.domElement.ownerDocument.removeEventListener( 'pointermove', onPointerMove );
 			scope.domElement.ownerDocument.removeEventListener( 'pointerup', onPointerUp );
 
@@ -872,7 +875,6 @@ class OrbitControls extends EventDispatcher {
 
 			switch ( event.pointerType ) {
 
-				case 'mouse':
 				case 'pen':
 					onMouseDown( event );
 					break;
@@ -889,7 +891,6 @@ class OrbitControls extends EventDispatcher {
 
 			switch ( event.pointerType ) {
 
-				case 'mouse':
 				case 'pen':
 					onMouseMove( event );
 					break;
@@ -904,7 +905,6 @@ class OrbitControls extends EventDispatcher {
 
 			switch ( event.pointerType ) {
 
-				case 'mouse':
 				case 'pen':
 					onMouseUp( event );
 					break;
@@ -1014,8 +1014,17 @@ class OrbitControls extends EventDispatcher {
 
 			if ( state !== STATE.NONE ) {
 
-				scope.domElement.ownerDocument.addEventListener( 'pointermove', onPointerMove );
-				scope.domElement.ownerDocument.addEventListener( 'pointerup', onPointerUp );
+				if (event instanceof PointerEvent) {
+
+					scope.domElement.ownerDocument.addEventListener( 'pointermove', onPointerMove );
+					scope.domElement.ownerDocument.addEventListener( 'pointerup', onPointerUp );
+
+				} else {
+
+					scope.domElement.ownerDocument.addEventListener( 'mousemove', onMouseMove );
+					scope.domElement.ownerDocument.addEventListener( 'mouseup', onMouseUp );
+
+				}
 
 				scope.dispatchEvent( _startEvent );
 
@@ -1061,8 +1070,17 @@ class OrbitControls extends EventDispatcher {
 
 		function onMouseUp( event ) {
 
-			scope.domElement.ownerDocument.removeEventListener( 'pointermove', onPointerMove );
-			scope.domElement.ownerDocument.removeEventListener( 'pointerup', onPointerUp );
+			if (event instanceof PointerEvent) {
+
+				scope.domElement.ownerDocument.addEventListener( 'pointermove', onPointerMove );
+				scope.domElement.ownerDocument.addEventListener( 'pointerup', onPointerUp );
+
+			} else {
+
+				scope.domElement.ownerDocument.addEventListener( 'mousemove', onMouseMove );
+				scope.domElement.ownerDocument.addEventListener( 'mouseup', onMouseUp );
+
+			}
 
 			if ( scope.enabled === false ) return;
 
@@ -1275,6 +1293,7 @@ class OrbitControls extends EventDispatcher {
 
 		scope.domElement.addEventListener( 'contextmenu', onContextMenu );
 
+		scope.domElement.addEventListener( 'mousedown', onMouseDown );
 		scope.domElement.addEventListener( 'pointerdown', onPointerDown );
 		scope.domElement.addEventListener( 'wheel', onMouseWheel, { passive: false } );
 
