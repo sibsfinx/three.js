@@ -1,17 +1,15 @@
-import {
-	Box2,
-	BufferGeometry,
-	FileLoader,
-	Float32BufferAttribute,
-	Loader,
-	Matrix3,
-	Path,
-	Shape,
-	ShapePath,
-	ShapeUtils,
-	Vector2,
-	Vector3
-} from '../../../build/three.module.js';
+import { Box2 } from "../../../src/math/Box2";
+import { BufferGeometry } from "../../../src/core/BufferGeometry";
+import { FileLoader } from "../../../src/loaders/FileLoader";
+import { Float32BufferAttribute } from "../../../src/core/BufferAttribute";
+import { Loader } from "../../../src/loaders/Loader";
+import { Matrix3 } from "../../../src/math/Matrix3";
+import { Path } from "../../../src/extras/core/Path";
+import { Shape } from "../../../src/extras/core/Shape";
+import { ShapePath } from "../../../src/extras/core/ShapePath";
+import { ShapeUtils } from "../../../src/extras/ShapeUtils";
+import { Vector2 } from "../../../src/math/Vector2";
+import { Vector3 } from "../../../src/math/Vector3";
 
 class SVGLoader extends Loader {
 

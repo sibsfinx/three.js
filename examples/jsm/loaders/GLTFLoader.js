@@ -64,7 +64,7 @@ import {
 	VectorKeyframeTrack,
 	sRGBEncoding,
 	LinearEncoding
-} from '../../../build/three.module.js';
+} from '../../../src/Three';
 
 import { RectAreaLightUniformsLib } from "../lights/RectAreaLightUniformsLib";
 import { RectAreaLightHelper } from "../helpers/RectAreaLightHelper";
