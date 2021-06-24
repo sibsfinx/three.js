@@ -20,7 +20,7 @@ import {
 	FileLoader,
 	LinearEncoding,
 	sRGBEncoding,
-} from '../../../build/three.module.js';
+} from '../../../src/Three';
 import {
 	read as readKTX,
 	KTX2ChannelETC1S,
