@@ -1,4 +1,4 @@
-import * as THREE from '../../build/three.module.js';
+import * as THREE from '../../src/Three';
 
 import { HTMLMesh } from '../../examples/jsm/interactive/HTMLMesh.js';
 import { InteractiveGroup } from '../../examples/jsm/interactive/InteractiveGroup.js';
