@@ -8,7 +8,7 @@ import {
 	LoaderUtils,
 	Mesh,
 	MeshPhongMaterial
-} from '../../../build/three.module.js';
+} from '../../../src/Three';
 import * as fflate from '../libs/fflate.module.js';
 
 /**

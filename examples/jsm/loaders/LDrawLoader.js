@@ -16,7 +16,7 @@ import {
 	UniformsLib,
 	UniformsUtils,
 	Vector3
-} from '../../../build/three.module.js';
+} from '../../../src/Three';
 
 // Special surface finish tag types.
 // Note: "MATERIAL" tag (e.g. GLITTER, SPECKLE) is not implemented
