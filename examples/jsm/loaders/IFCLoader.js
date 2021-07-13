@@ -14,7 +14,7 @@ import {
 	InterleavedBuffer,
 	InterleavedBufferAttribute,
 	BufferAttribute,
-} from '../../../build/three.module.js';
+} from '../../../src/Three';
 
 const ifcAPI = new IfcAPI();
 
